@@ -4,6 +4,11 @@
     <string name="inputs">Inputs</string>
     <string name="wifi">Wi-Fi</string>
     <string name="settings">Settings</string>
+    <string name="free_ram" translatable="false">Free RAM</string>
+    <string name="free_ram_done" translatable="false">Freed %1$d MB · %2$d MB free now</string>
+    <string name="clear_cache" translatable="false">Clear Cache</string>
+    <string name="clear_cache_done" translatable="false">Cleared %1$s · %2$s free now</string>
+    <string name="clear_cache_none" translatable="false">Nothing to clear · %1$s free</string>
     <string name="choose_input">Inputs</string>
     <string name="connected">Connected</string>
     <string name="standby">Standby</string>
@@ -41,6 +46,9 @@
     <string name="stats_storage">Storage %1$s free</string>
     <string name="storage_gb_whole">%1$.0f GB</string>
     <string name="storage_gb_decimal">%1$.1f GB</string>
+    <string name="storage_mb" translatable="false">%1$d MB</string>
+    <string name="stats_ram" translatable="false">RAM %1$d/%2$d MB</string>
+    <string name="stats_disk" translatable="false">Storage %1$s/%2$s</string>
     <string name="dream_name">Clock</string>
     <string name="vpn">VPN</string>
     <string name="vpn_off">VPN off</string>
@@ -104,6 +112,9 @@
     <string name="dock_edit_pick_place">Choose the dock place for this app and press OK. Back to cancel.</string>
     <string name="reorder">Reorder apps</string>
     <string name="tile_move">Move</string>
+    <string name="tile_close" translatable="false">Close app</string>
+    <string name="tile_closed" translatable="false">%1$s closed</string>
+    <string name="tile_uninstall" translatable="false">Uninstall</string>
     <string name="reorder_hint">OK picks up an app, arrows move it, Back places it. Back again to finish.</string>
     <string name="reorder_not_saved">Couldn\'t save the new order</string>
     <string name="app_library">App library</string>

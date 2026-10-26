@@ -17,10 +17,11 @@
 
     <!-- Apps pinned to the dock row at the bottom, in this order. Missing apps are skipped. -->
     <string-array name="dock_apps">
-        <item>com.netflix.ninja</item>
-        <item>com.amazon.amazonvideo.livingroom</item>
-        <item>com.google.android.youtube.tv</item>
         <item>in.startv.hotstar</item>
+        <item>com.google.android.youtube.tv</item>
+        <item>org.smarttube.stable</item>
+        <item>com.stremio.one</item>
+        <item>com.sonyliv</item>
     </string-array>
     <!-- With fewer dock_apps than columns (or a dock app that is not installed), the free dock slots take
          the first grid apps, so the dock never shows a gap. false leaves them empty (#162); a theme can
@@ -29,12 +30,12 @@
 
     <!-- Apps never shown as tiles (e.g. the Live TV app, which the Inputs menu already covers). -->
     <string-array name="hidden_apps">
-        <item>com.mediatek.wwtv.tvcenter</item>
+        <item>com.android.tv</item>
         <item>com.mitv.gallery</item>
     </string-array>
 
     <!-- The TV's Live TV / tuner app, offered at the end of the Inputs menu. Leave empty to omit. -->
-    <string name="live_tv_package" translatable="false">com.mediatek.wwtv.tvcenter</string>
+    <string name="live_tv_package" translatable="false">com.android.tv</string>
 
     <!-- Open the Live TV app above the first time Home comes up after the TV is switched on, for sets that are
          mostly used for broadcast TV. Once per boot: Home after that stays Home. Can also be set with
@@ -197,6 +198,10 @@
          where the firmware hands KEYCODE_GUIDE (172) to the stock launcher and no app ever receives it. Leave empty
          to omit. -->
     <string-array name="app_keys" translatable="false">
+        <!-- MiTV-AXSO0: the remote's Mi button (left of Home) opened PatchWall, which is disabled. Only works with
+             InputKeyService on, and on this TV any bound key filter makes held volume keys step once per press,
+             so the helper is left off here and this entry is unused. -->
+        <item>192:home</item>
     </string-array>
 
     <!-- Package of the stock launcher, for TVs whose firmware turns it back on after it was disabled. XGIMI's
@@ -292,7 +297,7 @@
          Inputs keeps its label. -->
     <bool name="icon_only_buttons">false</bool>
     <!-- The Inputs pill as a round icon button too (the label moves to the talkback description). -->
-    <bool name="icon_only_inputs">false</bool>
+    <bool name="icon_only_inputs">true</bool>
     <!-- true colours the Wi-Fi pill's icon green while the TV is online and leaves it white while it is not (dark on
          the focused pill either way), so the connection shows at a glance, also as an icon-only button. Can also be
          set with "wifi_status_color": true in a theme's config.json. -->
@@ -341,7 +346,7 @@
     <!-- Hold OK on a tile opens a small menu: Move (picks the tile up for reordering), Remove from Home (only with
          app_library) and App info. false keeps the old behaviour: holding OK opens the app's App info page.
          Can also be set with "tile_menu": true in a theme's config.json. -->
-    <bool name="tile_menu">false</bool>
+    <bool name="tile_menu">true</bool>
 
     <!-- Grid rows left visible under the dock on the home screen. 0 = dock sits at the very bottom. Tiles shrink if
          the dock, its title and this many rows would not otherwise fit the screen height. -->
@@ -353,7 +358,7 @@
 
     <!-- Tiles per row in the grid; the dock always has this many slots. Tiles are 180dp wide at 4 columns and
          shrink to fit from 5 up (about 144dp at 5, 117dp at 6 on a 1080p TV). -->
-    <integer name="columns">4</integer>
+    <integer name="columns">5</integer>
 
     <!-- Basic motion is on; advanced effects are opt-in in the launcher's own Settings screen. -->
     <bool name="animations">true</bool>
@@ -401,9 +406,21 @@
          "focus_overshoot" in a theme's config.json. -->
     <bool name="focus_overshoot">true</bool>
 
+    <!-- Home pressed again while this screen is already up opens this app instead (a package name), so the Home
+         button toggles between this launcher and another one. Empty: Home only goes back to the first tile. -->
+    <string name="home_again_app" translatable="false">com.spocky.projengmenu</string>
+
     <!-- One line under the clock: CPU, free memory and free storage. Off by default; a theme can set
          "show_stats": true. Nothing is read, and the clock does not move, while this is false. -->
-    <bool name="show_stats">false</bool>
+    <bool name="show_stats">true</bool>
+    <!-- A "Free RAM" pill next to Settings: kills the background processes of every app (not the one in front,
+         nor foreground services such as a playing stream), then shows how much memory came back. -->
+    <bool name="show_free_ram">true</bool>
+    <!-- A "Clear Cache" pill: asks Android for the space other apps keep as cache (StorageManager.allocateBytes),
+         which deletes their cache files above each app's quota. No permission; logins and app data stay. -->
+    <bool name="show_clear_cache">true</bool>
+    <!-- Wi-Fi pill as an icon only, without the network name. -->
+    <bool name="icon_only_wifi">true</bool>
 
     <!-- Time-of-day backdrop behind everything: a dark gradient that follows the clock, with a warm
          horizon glow around sunrise and sunset. 0 keeps the plain background (the default); 1 to 100

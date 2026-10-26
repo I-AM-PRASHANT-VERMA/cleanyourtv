@@ -3,6 +3,7 @@ package com.gathin.tvhome;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.Dialog;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
@@ -725,6 +726,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnReorder = findViewById(R.id.btnReorder);
         btnReorder.setOnClickListener(v -> toggleReorder());
         btnReorder.setVisibility(cfg.reorderButton ? View.VISIBLE : View.GONE);
+        View btnFreeRam = findViewById(R.id.btnFreeRam);
+        btnFreeRam.setOnClickListener(v -> freeRam());
+        btnFreeRam.setVisibility(getResources().getBoolean(R.bool.show_free_ram) ? View.VISIBLE : View.GONE);
+        View btnClearCache = findViewById(R.id.btnClearCache);
+        btnClearCache.setOnClickListener(v -> clearCache());
+        btnClearCache.setVisibility(getResources().getBoolean(R.bool.show_clear_cache) ? View.VISIBLE : View.GONE);
         if (!cfg.showNetworkPill) btnWifi.setVisibility(View.GONE);
         showInputsPill = cfg.showInputsPill;
         showInputsMenuRow = cfg.showInputsPill;
@@ -738,6 +745,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         iconOnlyButtons = cfg.iconOnlyButtons;
         topMenu = cfg.topMenu;
         wifiIconOnly = iconOnlyButtons && cfg.wifiLabelWidth <= 0;
+        if (!wifiIconOnly && getResources().getBoolean(R.bool.icon_only_wifi)) {
+            wifiIconOnly = true;
+            makeIconOnly(btnWifi);
+        }
         if (cfg.wifiStatusColor) {
             wifiPlainTint = btnWifi.getCompoundDrawableTintList();
             wifiOnlineTint = getColorStateList(R.color.pill_icon_online);
@@ -786,9 +797,18 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 focusTile(singleRow ? lastFocused : lastFocused % COLUMNS);
                 return true;
             }
-            int firstButton = btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : firstTopButton().getId();
-            int leftButton = rtlMenuBar ? R.id.btnSettings : firstButton;
-            int rightButton = rtlMenuBar ? firstButton : R.id.btnSettings;
+            // The bar's ends are its first and last shown buttons, whatever order the layout puts them in.
+            ViewGroup bar = findViewById(R.id.topButtons);
+            int firstButton = View.NO_ID, lastButton = R.id.btnSettings;
+            for (int i = 0; i < bar.getChildCount(); i++) {
+                View button = bar.getChildAt(i);
+                if (button.getVisibility() != View.VISIBLE) continue;
+                if (firstButton == View.NO_ID) firstButton = button.getId();
+                lastButton = button.getId();
+            }
+            if (firstButton == View.NO_ID) firstButton = R.id.btnSettings;
+            int leftButton = rtlMenuBar ? lastButton : firstButton;
+            int rightButton = rtlMenuBar ? firstButton : lastButton;
             if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return v.getId() == leftButton;
             return keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && v.getId() == rightButton;
         };
@@ -797,10 +817,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnVpn.setOnKeyListener(pillKeys);
         btnSettings.setOnKeyListener(pillKeys);
         btnReorder.setOnKeyListener(pillKeys);
+        btnFreeRam.setOnKeyListener(pillKeys);
+        btnClearCache.setOnKeyListener(pillKeys);
         btnLibraryTop.setOnKeyListener(pillKeys);
         for (View button : topAppButtons) button.setOnKeyListener(pillKeys);
         if (advancedEffects) {
-            List<View> pills = new ArrayList<>(Arrays.asList(btnInputs, btnWifi, btnVpn, btnReorder, btnLibraryTop, btnSettings));
+            List<View> pills = new ArrayList<>(Arrays.asList(btnInputs, btnWifi, btnVpn, btnReorder, btnFreeRam, btnClearCache, btnLibraryTop, btnSettings));
             pills.addAll(topAppButtons);
             for (View button : pills) {
                 button.setOnFocusChangeListener((view, focused) -> view.animate()
@@ -911,6 +933,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (openLauncherSettingsIfAsked(intent)) return;
         if (openInputsIfAsked(intent)) return;
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
+        // config.xml home_again_app: Home pressed while this screen is already up, with nothing over it, opens that
+        // app instead, so the Home button toggles between the two. Needs no key filter, so held keys keep repeating.
+        if (!stopped && !reordering && hasWindowFocus() && openHomeAgainApp()) return;
         grid.scrollToPosition(0);
         lastFocused = 0;
         lastFocusedKey = adapter.getItemCount() > 0 ? adapter.keyAt(0) : null;
@@ -920,6 +945,22 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // Still on screen (the quick panel was over it, or Home was already in front): the tiles are current,
             // so only go back to the first one; rebuilding would replay the entrance animation for nothing.
             grid.post(() -> focusTile(0));
+        }
+    }
+
+    /** Starts home_again_app by its TV entry point, or its phone one; false when it is empty, gone or disabled. */
+    private boolean openHomeAgainApp() {
+        String pkg = getString(R.string.home_again_app);
+        if (pkg.isEmpty()) return false;
+        PackageManager pm = getPackageManager();
+        Intent i = pm.getLeanbackLaunchIntentForPackage(pkg);
+        if (i == null) i = pm.getLaunchIntentForPackage(pkg);
+        if (i == null) return false;
+        try {
+            startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return true;
+        } catch (ActivityNotFoundException | SecurityException e) {
+            return false;
         }
     }
 
@@ -2094,24 +2135,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private String readStatsLine() {
-        int cpu = cpuPercent();
-        if (cpu < 0) {
-            try {
-                Thread.sleep(200);             // second sample, so the first line already has a CPU figure
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return "";
-            }
-            cpu = cpuPercent();
-        }
-        // Android 8 and later hide /proc/stat from apps on many TVs: then the line leaves CPU out rather than
-        // showing a dash that never fills in.
+        // Free out of total for both, e.g. "RAM 430/990 MB  ·  Storage 820 MB/4.4 GB". No CPU: Android 9 hides
+        // /proc/stat from apps here, and the line is meant to stay short.
         StringBuilder line = new StringBuilder();
-        if (cpu >= 0) line.append(getString(R.string.stats_cpu, cpu));
         long[] mem = memUsedOfTotalMb();
-        if (mem != null) appendStat(line, getString(R.string.stats_memory, mem[0], mem[1]));
-        String free = formatGb(getResources(), Environment.getDataDirectory().getFreeSpace());
-        if (!free.isEmpty()) appendStat(line, getString(R.string.stats_storage, free));
+        if (mem != null) line.append(getString(R.string.stats_ram, mem[1] - mem[0], mem[1]));
+        java.io.File data = Environment.getDataDirectory();
+        String free = formatSize(getResources(), data.getFreeSpace());
+        String total = formatSize(getResources(), data.getTotalSpace());
+        if (!free.isEmpty() && !total.isEmpty()) appendStat(line, getString(R.string.stats_disk, free, total));
         return StatsText.forLocale(line.toString(), getResources().getConfiguration().getLocales().get(0));
     }
 
@@ -2218,12 +2250,78 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         return new long[]{Math.max(0, total - available), total};
     }
 
+    /** MemAvailable in MB, or -1 when /proc/meminfo cannot be read. */
+    private long memAvailableMb() {
+        long[] mem = memUsedOfTotalMb();
+        return mem == null ? -1 : mem[1] - mem[0];
+    }
+
+    /** config.xml show_free_ram: kill every other app's background processes, off the main thread. A normal app
+     *  cannot force-stop others, so the app in front and foreground services (a stream playing) are left alone. */
+    private void freeRam() {
+        ActivityManager am = getSystemService(ActivityManager.class);
+        if (am == null) return;
+        String self = getPackageName();
+        new Thread(() -> {
+            long before = memAvailableMb();
+            for (ApplicationInfo app : getPackageManager().getInstalledApplications(0)) {
+                if (!app.packageName.equals(self)) am.killBackgroundProcesses(app.packageName);
+            }
+            try {
+                Thread.sleep(700);             // let the kernel hand the pages back before reading again
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            long after = memAvailableMb();
+            String line = showStats ? readStatsLine() : null;
+            handler.post(() -> {
+                if (line != null && stats != null) stats.setText(line);
+                if (before >= 0 && after >= 0) Toast.makeText(this,
+                        getString(R.string.free_ram_done, Math.max(0, after - before), after), Toast.LENGTH_SHORT).show();
+            });
+        }, "free-ram").start();
+    }
+
+    /** config.xml show_clear_cache: ask for every byte Android could hand this app, which makes it delete other
+     *  apps' cache files above their quota first. Nothing is written; the request only frees the space. */
+    private void clearCache() {
+        android.os.storage.StorageManager sm = getSystemService(android.os.storage.StorageManager.class);
+        if (sm == null) return;
+        java.io.File data = Environment.getDataDirectory();
+        new Thread(() -> {
+            long before = data.getFreeSpace();
+            try {
+                java.util.UUID uuid = sm.getUuidForPath(getFilesDir());
+                sm.allocateBytes(uuid, sm.getAllocatableBytes(uuid));
+            } catch (IOException | RuntimeException e) {
+                android.util.Log.w("TvHome", "clear cache: " + e);
+            }
+            long after = data.getFreeSpace();
+            String line = showStats ? readStatsLine() : null;
+            handler.post(() -> {
+                if (line != null && stats != null) stats.setText(line);
+                Resources res = getResources();
+                String freed = formatSize(res, after - before);
+                Toast.makeText(this, freed.isEmpty()
+                        ? getString(R.string.clear_cache_none, formatSize(res, after))
+                        : getString(R.string.clear_cache_done, freed, formatSize(res, after)), Toast.LENGTH_SHORT).show();
+            });
+        }, "clear-cache").start();
+    }
+
     private static String readFirstLine(String path) {
         try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(path))) {
             return r.readLine();
         } catch (IOException e) {
             return null;
         }
+    }
+
+    /** Under 1 GB in whole MB ("820 MB"), from 1 GB up as formatGb does ("4.4 GB"). */
+    private static String formatSize(Resources res, long bytes) {
+        if (bytes <= 0) return "";
+        long mb = bytes / (1024 * 1024);
+        return mb < 1024 ? res.getString(R.string.storage_mb, mb) : formatGb(res, bytes);
     }
 
     private static String formatGb(Resources res, long bytes) {
@@ -3292,11 +3390,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
         LinearLayout rows = panel.findViewById(R.id.rows);
         PopupWindow popup = glassPopup(panel, (int) (200 * density));
-        if (dockRow && position < adapter.movableCount()) {
-            boolean inDock = position < COLUMNS;
-            addSettingsMenuRow(rows, popup, inDock ? R.string.tile_replace_in_dock : R.string.tile_add_to_dock,
-                    () -> startDockEditFor(key, inDock));
-        }
         if (position < adapter.movableCount()) addSettingsMenuRow(rows, popup, R.string.tile_move, () -> {
             if (!beginReorder()) return;
             int at = adapter.positionOf(key);   // beginReorder can rebuild the tiles
@@ -3305,6 +3398,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             pickUp(at);
             Toast.makeText(this, R.string.reorder_hint, Toast.LENGTH_LONG).show();
         });
+        if (dockRow && position < adapter.movableCount()) {
+            boolean inDock = position < COLUMNS;
+            addSettingsMenuRow(rows, popup, inDock ? R.string.tile_replace_in_dock : R.string.tile_add_to_dock,
+                    () -> startDockEditFor(key, inDock));
+        }
         if (appLibraryEnabled) addSettingsMenuRow(rows, popup, R.string.library_remove_shortcut, () -> {
             if (LibraryApps.save(this, pkg, false)) reloadApps(false);
             else Toast.makeText(this, R.string.library_save_failed, Toast.LENGTH_LONG).show();
@@ -3312,6 +3410,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // Some firmware has no App info page at all; a row that only toasts "can't open" helps nobody.
         Intent info = SystemSettings.appInfo(this, pkg);
         if (info != null) addSettingsMenuRow(rows, popup, R.string.library_app_info, () -> open(info));
+        // Close app: what a normal app may do to another, kill its background processes. A foreground service (a
+        // stream still playing) survives; App info's Force stop is the full one.
+        addSettingsMenuRow(rows, popup, R.string.tile_close, () -> {
+            ActivityManager am = getSystemService(ActivityManager.class);
+            if (am != null) am.killBackgroundProcesses(pkg);
+            Toast.makeText(this, getString(R.string.tile_closed, adapter.labelAt(position)), Toast.LENGTH_SHORT).show();
+        });
+        // Uninstall only for apps that can go: Android's own dialog asks to confirm, and system apps have none.
+        try {
+            ApplicationInfo ai = getPackageManager().getApplicationInfo(pkg, 0);
+            if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) == 0) addSettingsMenuRow(rows, popup, R.string.tile_uninstall,
+                    () -> open(new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + pkg))));
+        } catch (PackageManager.NameNotFoundException ignored) {
+        }
         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
         popup.setWidth(Math.max((int) (200 * density), panel.getMeasuredWidth()));
         // Dock tiles sit near the bottom of the screen: open the menu above the tile when it would not fit below.
